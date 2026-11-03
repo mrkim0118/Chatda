@@ -90,19 +90,33 @@ function Invoke-NativeReleaseBuild {
         [string]$ProjectDir
     )
 
-    $command = 'call "' + $VcVarsPath + '" >nul' +
-        ' && cd /d "' + $ProjectDir + '"' +
-        ' && if not exist "obj\Release" mkdir "obj\Release"' +
-        ' && if not exist "build\Release" mkdir "build\Release"' +
-        ' && rc /nologo /fo "obj\Release\app.res" "app.rc"' +
-        ' && cl /nologo /std:c++20 /EHsc /O2 /MT /DUNICODE /D_UNICODE /DWIN32 /D_WINDOWS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /Fo"obj\Release\\" /Fd"obj\Release\vc143.pdb" "MainWindow.cpp" "main.cpp" "SearchIndex.cpp" "UpdateCheck.cpp" /link /OUT:"build\Release\UltraFastFileExplorer.exe" /SUBSYSTEM:WINDOWS User32.lib Gdi32.lib Shell32.lib Ole32.lib Comctl32.lib Winhttp.lib "obj\Release\app.res"' +
-        ' && copy /Y "latest-version.txt" "build\Release\" >nul' +
-        ' && if exist "update-url.txt" copy /Y "update-url.txt" "build\Release\" >nul' +
-        ' && if exist "installer-url.txt" copy /Y "installer-url.txt" "build\Release\" >nul'
+    $command = @"
+@echo off
+call "$VcVarsPath" >nul
+if errorlevel 1 exit /b 1
+cd /d "$ProjectDir"
+if not exist "obj\Release" mkdir "obj\Release"
+if not exist "build\Release" mkdir "build\Release"
+rc /nologo /fo "obj\Release\app.res" "app.rc"
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++20 /EHsc /O2 /MD /DUNICODE /D_UNICODE /DWIN32 /D_WINDOWS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /Fo"obj\Release\\" "MainWindow.cpp" "main.cpp" "SearchIndex.cpp" "UpdateCheck.cpp" /link /DEBUG:NONE /OUT:"build\Release\UltraFastFileExplorer.exe" /SUBSYSTEM:WINDOWS User32.lib Gdi32.lib Shell32.lib Ole32.lib Comctl32.lib Winhttp.lib "obj\Release\app.res"
+if errorlevel 1 exit /b 1
+copy /Y "latest-version.txt" "build\Release\" >nul
+if exist "update-url.txt" copy /Y "update-url.txt" "build\Release\" >nul
+if exist "installer-url.txt" copy /Y "installer-url.txt" "build\Release\" >nul
+exit /b 0
+"@
 
-    & cmd.exe '/c' ('"' + $command + '"')
-    if ($LASTEXITCODE -ne 0) {
-        throw "Native release build failed."
+    $batchPath = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".cmd")
+    try {
+        Set-Content -LiteralPath $batchPath -Value $command -Encoding ASCII
+        & cmd.exe /d /c $batchPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Native release build failed."
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $batchPath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -169,6 +183,9 @@ if (Test-Path -LiteralPath (Join-Path $projectDir "installer-url.txt")) {
     Copy-Item -LiteralPath (Join-Path $projectDir "installer-url.txt") -Destination $publishDirPath -Force
 }
 
+Get-ChildItem -LiteralPath $publishDirPath -Filter "*.pdb" -File -Recurse -ErrorAction SilentlyContinue |
+    Remove-Item -Force
+
 @{
     DefaultUpdateSource = $DefaultUpdateSource
 } | ConvertTo-Json | Set-Content -LiteralPath $defaultsFilePath -Encoding UTF8
@@ -202,6 +219,8 @@ Write-Host "3/3 Packing Velopack release"
     --releaseNotes $releaseNotesPath `
     --outputDir $outputDirPath `
     --icon $iconPath `
+    --exclude ".*\.pdb$" `
+    --framework "vcredist143-x64" `
     --shortcuts "Desktop,StartMenuRoot"
 
 if ($LASTEXITCODE -ne 0) {

@@ -13,6 +13,10 @@
 .env
 .env.*
 *.log
+*.pdb
+*.obj
+*.res
+*.tlog
 
 # Packaged release and build output
 **/build/
