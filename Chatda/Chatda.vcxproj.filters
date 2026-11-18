@@ -16,9 +16,6 @@
     <ClCompile Include="SearchIndex.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="UpdateCheck.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MainWindow.h">
@@ -30,7 +27,7 @@
     <ClInclude Include="SearchIndex.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="UpdateCheck.h">
+    <ClInclude Include="StringUtil.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -41,8 +38,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.ico" />
-    <None Include="installer-url.txt" />
     <None Include="latest-version.txt" />
-    <None Include="update-url.txt" />
   </ItemGroup>
 </Project>

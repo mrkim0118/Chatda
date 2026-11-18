@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace ufe {
+namespace chatda {
 
 constexpr uint32_t kInvalidIndex = 0xFFFFFFFFu;
 
@@ -18,7 +18,8 @@ struct SearchResultRow {
 
 class SearchIndex {
 public:
-    bool Build();
+    // Returns false when nothing was indexed or `cancel` became true.
+    bool Build(const std::atomic_bool& cancel);
     bool LoadCache();
     bool SaveCache() const;
     size_t Size() const;
@@ -28,27 +29,22 @@ public:
 private:
     struct IndexEntry {
         std::wstring name;
-        std::wstring lowerName;
+        std::wstring lowerName;  // empty when name is already lowercase, to save memory
         uint32_t parentIndex = kInvalidIndex;
         uint16_t volumeIndex = 0;
         bool isDirectory = false;
-    };
 
-    struct LocalIndexEntry {
-        std::wstring name;
-        std::wstring lowerName;
-        uint32_t parentIndex = kInvalidIndex;
-        bool isDirectory = false;
+        const std::wstring& Lower() const { return lowerName.empty() ? name : lowerName; }
     };
 
     struct VolumeBuildResult {
         std::wstring root;
-        std::vector<LocalIndexEntry> entries;
+        std::vector<IndexEntry> entries;
     };
 
-    static VolumeBuildResult BuildSingleVolume(const std::wstring& root);
-    static bool TryBuildFromUsn(const std::wstring& root, VolumeBuildResult& result);
-    static void BuildFromRecursiveScan(const std::wstring& root, VolumeBuildResult& result);
+    static VolumeBuildResult BuildSingleVolume(const std::wstring& root, const std::atomic_bool& cancel);
+    static bool TryBuildFromUsn(const std::wstring& root, VolumeBuildResult& result, const std::atomic_bool& cancel);
+    static void BuildFromRecursiveScan(const std::wstring& root, VolumeBuildResult& result, const std::atomic_bool& cancel);
     static bool IsNtfs(const std::wstring& root);
     static std::wstring DevicePathForRoot(const std::wstring& root);
     std::wstring BuildPath(uint32_t index) const;
@@ -57,4 +53,4 @@ private:
     std::vector<IndexEntry> entries_;
 };
 
-}  // namespace ufe
+}  // namespace chatda

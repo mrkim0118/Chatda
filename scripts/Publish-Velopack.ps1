@@ -1,12 +1,11 @@
 param(
     [string]$Version = "",
-    [string]$PackId = "TechArchive.UltraFastFileExplorer",
-    [string]$PackTitle = "Ultra Fast File Explorer",
+    [string]$PackId = "Chatda",
+    [string]$PackTitle = "Chatda",
     [string]$Channel = "win",
     [string]$Runtime = "win-x64",
-    [string]$MainExe = "UltraFastFileExplorer.exe",
+    [string]$MainExe = "Chatda.exe",
     [string]$Authors = "TechArchive",
-    [string]$DefaultUpdateSource = "https://tech.trendarchive.io/Utility/UltraFastFileExplorer/",
     [string]$PublishDir = "",
     [string]$OutputDir = "",
     [string]$ReleaseNotes = ""
@@ -99,11 +98,8 @@ if not exist "obj\Release" mkdir "obj\Release"
 if not exist "build\Release" mkdir "build\Release"
 rc /nologo /fo "obj\Release\app.res" "app.rc"
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++20 /EHsc /O2 /MD /DUNICODE /D_UNICODE /DWIN32 /D_WINDOWS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /Fo"obj\Release\\" "MainWindow.cpp" "main.cpp" "SearchIndex.cpp" "UpdateCheck.cpp" /link /DEBUG:NONE /OUT:"build\Release\UltraFastFileExplorer.exe" /SUBSYSTEM:WINDOWS User32.lib Gdi32.lib Shell32.lib Ole32.lib Comctl32.lib Winhttp.lib "obj\Release\app.res"
+cl /nologo /std:c++20 /EHsc /O2 /MD /DUNICODE /D_UNICODE /DWIN32 /D_WINDOWS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /Fo"obj\Release\\" "MainWindow.cpp" "main.cpp" "SearchIndex.cpp" /link /DEBUG:NONE /OUT:"build\Release\Chatda.exe" /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" User32.lib Gdi32.lib Shell32.lib Ole32.lib Comctl32.lib "obj\Release\app.res"
 if errorlevel 1 exit /b 1
-copy /Y "latest-version.txt" "build\Release\" >nul
-if exist "update-url.txt" copy /Y "update-url.txt" "build\Release\" >nul
-if exist "installer-url.txt" copy /Y "installer-url.txt" "build\Release\" >nul
 exit /b 0
 "@
 
@@ -122,7 +118,7 @@ exit /b 0
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-FullPath -BasePath $scriptRoot -Value ".."
-$projectDir = Resolve-FullPath -BasePath $repoRoot -Value "UltraFastFileExplorer"
+$projectDir = Resolve-FullPath -BasePath $repoRoot -Value "Chatda"
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = Get-VersionFromFile -ProjectDir $projectDir
@@ -144,9 +140,6 @@ $publishDirPath = Resolve-FullPath -BasePath $repoRoot -Value $PublishDir
 $outputDirPath = Resolve-FullPath -BasePath $repoRoot -Value $OutputDir
 $releaseNotesPath = Resolve-FullPath -BasePath $repoRoot -Value $ReleaseNotes
 $iconPath = Join-Path $projectDir "app.ico"
-$defaultsFilePath = Join-Path $publishDirPath "app-defaults.json"
-$latestVersionOutputPath = Join-Path $outputDirPath "latest-version.txt"
-$installerUrlOutputPath = Join-Path $outputDirPath "installer-url.txt"
 
 New-Item -ItemType Directory -Force -Path $publishDirPath | Out-Null
 New-Item -ItemType Directory -Force -Path $outputDirPath | Out-Null
@@ -158,7 +151,7 @@ if (Test-Path -LiteralPath $publishDirPath) {
 
 if (-not (Test-Path -LiteralPath $releaseNotesPath)) {
     @(
-        "# Ultra Fast File Explorer $Version"
+        "# Chatda $Version"
         ""
         "- Packaged release."
     ) | Set-Content -LiteralPath $releaseNotesPath -Encoding UTF8
@@ -175,24 +168,9 @@ if (-not (Test-Path -LiteralPath $buildOutputDir)) {
 
 Write-Host "2/3 Preparing publish directory"
 Get-ChildItem -LiteralPath $buildOutputDir -Force | Copy-Item -Destination $publishDirPath -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $projectDir "latest-version.txt") -Destination $publishDirPath -Force
-if (Test-Path -LiteralPath (Join-Path $projectDir "update-url.txt")) {
-    Copy-Item -LiteralPath (Join-Path $projectDir "update-url.txt") -Destination $publishDirPath -Force
-}
-if (Test-Path -LiteralPath (Join-Path $projectDir "installer-url.txt")) {
-    Copy-Item -LiteralPath (Join-Path $projectDir "installer-url.txt") -Destination $publishDirPath -Force
-}
 
 Get-ChildItem -LiteralPath $publishDirPath -Filter "*.pdb" -File -Recurse -ErrorAction SilentlyContinue |
     Remove-Item -Force
-
-@{
-    DefaultUpdateSource = $DefaultUpdateSource
-} | ConvertTo-Json | Set-Content -LiteralPath $defaultsFilePath -Encoding UTF8
-
-Set-Content -LiteralPath $latestVersionOutputPath -Value $Version -Encoding UTF8
-$setupUrl = "$DefaultUpdateSource$PackId-$Channel-Setup.exe"
-Set-Content -LiteralPath $installerUrlOutputPath -Value $setupUrl -Encoding UTF8
 
 $vpkCommand = Get-Command vpk.exe -ErrorAction SilentlyContinue
 if (-not $vpkCommand) {
@@ -229,15 +207,15 @@ if ($LASTEXITCODE -ne 0) {
 
 $setupFileName = "$PackId-$Channel-Setup.exe"
 $setupFilePath = Join-Path $outputDirPath $setupFileName
-if (Test-Path -LiteralPath $setupFilePath) {
-    $versionedSetupName = "{0}-Setup-{1}.exe" -f (Convert-ToFileSafeName -Value $PackTitle), $Version
-    $versionedSetupPath = Join-Path $outputDirPath $versionedSetupName
-    Copy-Item -LiteralPath $setupFilePath -Destination $versionedSetupPath -Force
-    Write-Host "Versioned setup : $versionedSetupPath"
+if (-not (Test-Path -LiteralPath $setupFilePath)) {
+    throw "Setup file was not found: $setupFilePath"
 }
+$versionedSetupName = "{0}-Setup-{1}.exe" -f (Convert-ToFileSafeName -Value $PackTitle), $Version
+$versionedSetupPath = Join-Path $outputDirPath $versionedSetupName
+Copy-Item -LiteralPath $setupFilePath -Destination $versionedSetupPath -Force
+Write-Host "Versioned setup : $versionedSetupPath"
 
 Write-Host ""
 Write-Host "Velopack release complete."
 Write-Host "Publish files : $publishDirPath"
 Write-Host "Release feed  : $outputDirPath"
-Write-Host "Update source : $DefaultUpdateSource"

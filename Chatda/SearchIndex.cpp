@@ -16,14 +16,16 @@
 #include <unordered_map>
 #include <utility>
 
-namespace ufe {
+#include "StringUtil.h"
+
+namespace chatda {
 namespace {
 
 constexpr size_t kMaxResults = 2000;
 constexpr uint32_t kCacheVersion = 1;
-constexpr wchar_t kCacheFolderName[] = L"UltraFastFileExplorer";
+constexpr wchar_t kCacheFolderName[] = L"Chatda";
 constexpr wchar_t kCacheFileName[] = L"index-cache-v1.bin";
-constexpr char kCacheMagic[] = "UFECIDX1";
+constexpr char kCacheMagic[] = "CHATIDX1";
 
 template <typename T>
 bool WriteValue(std::ofstream& stream, const T& value) {
@@ -64,21 +66,17 @@ bool ReadString(std::ifstream& stream, std::wstring& value) {
     return static_cast<bool>(stream);
 }
 
-std::wstring Trim(std::wstring value) {
-    auto is_space = [](wchar_t ch) { return iswspace(ch) != 0; };
-    const auto start = std::find_if_not(value.begin(), value.end(), is_space);
-    const auto end = std::find_if_not(value.rbegin(), value.rend(), is_space).base();
-    if (start >= end) {
-        return {};
-    }
-    return std::wstring(start, end);
-}
-
 std::wstring ToLower(std::wstring value) {
     if (!value.empty()) {
         CharLowerBuffW(value.data(), static_cast<DWORD>(value.size()));
     }
     return value;
+}
+
+// Empty result means "same as name" (see IndexEntry::Lower).
+std::wstring LowerIfDifferent(const std::wstring& name) {
+    std::wstring lower = ToLower(name);
+    return lower == name ? std::wstring{} : lower;
 }
 
 std::vector<std::wstring> TokenizeQuery(const std::wstring& loweredQuery) {
@@ -111,16 +109,6 @@ bool ContainsAllTokens(const std::wstring& haystack, const std::vector<std::wstr
     return true;
 }
 
-std::wstring JoinPath(const std::wstring& left, const std::wstring& right) {
-    if (left.empty()) {
-        return right;
-    }
-    if (left.back() == L'\\') {
-        return left + right;
-    }
-    return left + L'\\' + right;
-}
-
 std::wstring ToExtendedPath(const std::wstring& path) {
     if (path.rfind(L"\\\\?\\", 0) == 0) {
         return path;
@@ -133,7 +121,7 @@ std::wstring ToExtendedPath(const std::wstring& path) {
 
 }  // namespace
 
-bool SearchIndex::Build() {
+bool SearchIndex::Build(const std::atomic_bool& cancel) {
     std::vector<std::wstring> roots;
     const DWORD driveMask = GetLogicalDrives();
     for (wchar_t drive = L'A'; drive <= L'Z'; ++drive) {
@@ -162,12 +150,16 @@ bool SearchIndex::Build() {
 
     for (size_t index = 0; index < roots.size(); ++index) {
         workers.emplace_back([&, index]() {
-            volumeResults[index] = BuildSingleVolume(roots[index]);
+            volumeResults[index] = BuildSingleVolume(roots[index], cancel);
         });
     }
 
     for (auto& worker : workers) {
         worker.join();
+    }
+
+    if (cancel.load(std::memory_order_relaxed)) {
+        return false;
     }
 
     volumes_.clear();
@@ -183,15 +175,14 @@ bool SearchIndex::Build() {
         volumes_.push_back(result.root);
 
         entries_.reserve(entries_.size() + result.entries.size());
-        for (auto& localEntry : result.entries) {
-            IndexEntry entry;
-            entry.name = std::move(localEntry.name);
-            entry.lowerName = std::move(localEntry.lowerName);
-            entry.parentIndex = localEntry.parentIndex == kInvalidIndex ? kInvalidIndex : localEntry.parentIndex + offset;
-            entry.isDirectory = localEntry.isDirectory;
+        for (auto& entry : result.entries) {
+            if (entry.parentIndex != kInvalidIndex) {
+                entry.parentIndex += offset;
+            }
             entry.volumeIndex = volumeIndex;
             entries_.push_back(std::move(entry));
         }
+        result.entries = {};  // free this volume's buffer before merging the next one
     }
 
     return !entries_.empty();
@@ -265,7 +256,7 @@ bool SearchIndex::LoadCache() {
             return false;
         }
 
-        entry.lowerName = ToLower(entry.name);
+        entry.lowerName = LowerIfDifferent(entry.name);
         entry.isDirectory = (flags & 1u) != 0;
         loadedEntries.push_back(std::move(entry));
     }
@@ -345,42 +336,52 @@ std::vector<SearchResultRow> SearchIndex::Search(const std::wstring& query, uint
         return {};
     }
 
-    std::vector<uint32_t> matches;
-    matches.reserve(std::min(entries_.size(), kMaxResults));
+    // Collect every match, then keep the best kMaxResults:
+    // exact name first, then names starting with the first word, then the rest.
+    struct Match {
+        uint32_t index;
+        uint8_t rank;
+    };
+    std::vector<Match> matches;
 
     for (uint32_t index = 0; index < entries_.size(); ++index) {
         if ((index & 2047u) == 0u && latestRequestId.load(std::memory_order_relaxed) != expectedRequestId) {
             return {};
         }
 
-        if (ContainsAllTokens(entries_[index].lowerName, tokens)) {
-            matches.push_back(index);
-            if (matches.size() >= kMaxResults) {
-                break;
-            }
+        const std::wstring& lower = entries_[index].Lower();
+        if (ContainsAllTokens(lower, tokens)) {
+            const uint8_t rank = lower == lowered ? 0 : lower.starts_with(tokens.front()) ? 1 : 2;
+            matches.push_back({index, rank});
         }
     }
 
-    std::sort(matches.begin(), matches.end(), [&](uint32_t left, uint32_t right) {
-        const auto& a = entries_[left];
-        const auto& b = entries_[right];
+    const size_t keep = std::min(matches.size(), kMaxResults);
+    std::partial_sort(matches.begin(), matches.begin() + keep, matches.end(), [&](const Match& left, const Match& right) {
+        if (left.rank != right.rank) {
+            return left.rank < right.rank;
+        }
+        const auto& a = entries_[left.index];
+        const auto& b = entries_[right.index];
         if (a.isDirectory != b.isDirectory) {
-            return a.isDirectory && !b.isDirectory;
+            return a.isDirectory;
         }
         const int byName = _wcsicmp(a.name.c_str(), b.name.c_str());
         if (byName != 0) {
             return byName < 0;
         }
-        return BuildPath(left) < BuildPath(right);
+        return left.index < right.index;
     });
+    matches.resize(keep);
 
     std::vector<SearchResultRow> rows;
     rows.reserve(matches.size());
-    for (const uint32_t matchIndex : matches) {
+    for (const auto& match : matches) {
         if (latestRequestId.load(std::memory_order_relaxed) != expectedRequestId) {
             return {};
         }
 
+        const uint32_t matchIndex = match.index;
         SearchResultRow row;
         row.name = entries_[matchIndex].name;
         row.path = BuildPath(matchIndex);
@@ -392,18 +393,18 @@ std::vector<SearchResultRow> SearchIndex::Search(const std::wstring& query, uint
     return rows;
 }
 
-SearchIndex::VolumeBuildResult SearchIndex::BuildSingleVolume(const std::wstring& root) {
+SearchIndex::VolumeBuildResult SearchIndex::BuildSingleVolume(const std::wstring& root, const std::atomic_bool& cancel) {
     VolumeBuildResult result;
     result.root = root;
-    if (IsNtfs(root) && TryBuildFromUsn(root, result)) {
+    if (IsNtfs(root) && TryBuildFromUsn(root, result, cancel)) {
         return result;
     }
 
-    BuildFromRecursiveScan(root, result);
+    BuildFromRecursiveScan(root, result, cancel);
     return result;
 }
 
-bool SearchIndex::TryBuildFromUsn(const std::wstring& root, VolumeBuildResult& result) {
+bool SearchIndex::TryBuildFromUsn(const std::wstring& root, VolumeBuildResult& result, const std::atomic_bool& cancel) {
     struct RawNtfsEntry {
         uint64_t fileId = 0;
         uint64_t parentFileId = 0;
@@ -450,7 +451,7 @@ bool SearchIndex::TryBuildFromUsn(const std::wstring& root, VolumeBuildResult& r
         static_cast<DWORD>(buffer.size()),
         &bytesReturned,
         nullptr)) {
-        if (bytesReturned <= sizeof(USN)) {
+        if (bytesReturned <= sizeof(USN) || cancel.load(std::memory_order_relaxed)) {
             break;
         }
 
@@ -476,6 +477,9 @@ bool SearchIndex::TryBuildFromUsn(const std::wstring& root, VolumeBuildResult& r
 
     CloseHandle(volume);
 
+    if (cancel.load(std::memory_order_relaxed)) {
+        return true;  // nothing more to do; Build() discards the result
+    }
     if (rawEntries.empty()) {
         return false;
     }
@@ -486,9 +490,9 @@ bool SearchIndex::TryBuildFromUsn(const std::wstring& root, VolumeBuildResult& r
     fileIdToIndex.reserve(rawEntries.size());
 
     for (uint32_t index = 0; index < rawEntries.size(); ++index) {
-        LocalIndexEntry entry;
+        IndexEntry entry;
         entry.name = std::move(rawEntries[index].name);
-        entry.lowerName = ToLower(entry.name);
+        entry.lowerName = LowerIfDifferent(entry.name);
         entry.isDirectory = rawEntries[index].isDirectory;
         result.entries.push_back(std::move(entry));
         fileIdToIndex.emplace(rawEntries[index].fileId, index);
@@ -504,7 +508,7 @@ bool SearchIndex::TryBuildFromUsn(const std::wstring& root, VolumeBuildResult& r
     return !result.entries.empty();
 }
 
-void SearchIndex::BuildFromRecursiveScan(const std::wstring& root, VolumeBuildResult& result) {
+void SearchIndex::BuildFromRecursiveScan(const std::wstring& root, VolumeBuildResult& result, const std::atomic_bool& cancel) {
     struct DirectoryWorkItem {
         std::wstring scanPath;
         uint32_t parentIndex = kInvalidIndex;
@@ -513,7 +517,7 @@ void SearchIndex::BuildFromRecursiveScan(const std::wstring& root, VolumeBuildRe
     std::deque<DirectoryWorkItem> queue;
     queue.push_back({ToExtendedPath(root), kInvalidIndex});
 
-    while (!queue.empty()) {
+    while (!queue.empty() && !cancel.load(std::memory_order_relaxed)) {
         DirectoryWorkItem work = std::move(queue.front());
         queue.pop_front();
 
@@ -537,9 +541,9 @@ void SearchIndex::BuildFromRecursiveScan(const std::wstring& root, VolumeBuildRe
                 continue;
             }
 
-            LocalIndexEntry entry;
+            IndexEntry entry;
             entry.name.assign(name.begin(), name.end());
-            entry.lowerName = ToLower(entry.name);
+            entry.lowerName = LowerIfDifferent(entry.name);
             entry.parentIndex = work.parentIndex;
             entry.isDirectory = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 
@@ -592,4 +596,4 @@ std::wstring SearchIndex::BuildPath(uint32_t index) const {
     return path;
 }
 
-}  // namespace ufe
+}  // namespace chatda

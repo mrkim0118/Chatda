@@ -6,21 +6,87 @@
 #include <shlobj.h>
 #include <strsafe.h>
 #include <windowsx.h>
+#include <exdisp.h>
+#include <shldisp.h>
+#include <shlguid.h>
+#include <wrl/client.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <utility>
 
 #include "resource.h"
-#include "UpdateCheck.h"
 
-namespace ufe {
+namespace chatda {
 namespace {
 
-constexpr wchar_t kWindowClassName[] = L"UltraFastFileExplorerWindow";
-constexpr wchar_t kAppTitle[] = L"Ultra Fast File Explorer";
-constexpr wchar_t kIndexingTitle[] = L"Ultra Fast File Explorer - Indexing...";
+constexpr auto kIndexRefreshInterval = std::chrono::minutes(10);
+
+// The app runs as admin (needed for the fast NTFS index). Launch through the desktop
+// Explorer so opened files and URLs run with normal user rights, not as admin.
+bool ShellExecuteAsUser(HWND owner, const wchar_t* file, const wchar_t* parameters) {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IShellWindows> shellWindows;
+    ComPtr<IDispatch> desktopDispatch;
+    ComPtr<IServiceProvider> serviceProvider;
+    ComPtr<IShellBrowser> browser;
+    ComPtr<IShellView> view;
+    ComPtr<IDispatch> background;
+    ComPtr<IShellFolderViewDual> folderView;
+    ComPtr<IDispatch> application;
+    ComPtr<IShellDispatch2> shell;
+    VARIANT empty = {};
+    long desktopHwnd = 0;
+
+    if (SUCCEEDED(CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(&shellWindows))) &&
+        shellWindows->FindWindowSW(&empty, &empty, SWC_DESKTOP, &desktopHwnd, SWFO_NEEDDISPATCH, &desktopDispatch) == S_OK &&
+        SUCCEEDED(desktopDispatch.As(&serviceProvider)) &&
+        SUCCEEDED(serviceProvider->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&browser))) &&
+        SUCCEEDED(browser->QueryActiveShellView(&view)) &&
+        SUCCEEDED(view->GetItemObject(SVGIO_BACKGROUND, IID_PPV_ARGS(&background))) &&
+        SUCCEEDED(background.As(&folderView)) &&
+        SUCCEEDED(folderView->get_Application(&application)) &&
+        SUCCEEDED(application.As(&shell))) {
+        BSTR fileText = SysAllocString(file);
+        VARIANT args = {};
+        if (parameters != nullptr) {
+            args.vt = VT_BSTR;
+            args.bstrVal = SysAllocString(parameters);
+        }
+        VARIANT show = {};
+        show.vt = VT_I4;
+        show.lVal = SW_SHOWNORMAL;
+        const HRESULT result = shell->ShellExecute(fileText, args, empty, empty, show);
+        SysFreeString(fileText);
+        VariantClear(&args);
+        if (SUCCEEDED(result)) {
+            return true;
+        }
+    }
+
+    // No desktop Explorer (e.g. a replacement shell): fall back to a direct launch.
+    const HINSTANCE result = ShellExecuteW(owner, L"open", file, parameters, nullptr, SW_SHOWNORMAL);
+    return reinterpret_cast<INT_PTR>(result) > 32;
+}
+
+std::wstring LowerExtension(const std::wstring& path) {
+    std::wstring extension = std::filesystem::path(path).extension().wstring();
+    if (!extension.empty()) {
+        CharLowerBuffW(extension.data(), static_cast<DWORD>(extension.size()));
+    }
+    return extension;
+}
+
+// These file types carry their own icon, so the icon must come from the file itself.
+bool HasOwnIcon(const std::wstring& lowerExtension) {
+    return lowerExtension == L".exe" || lowerExtension == L".ico" || lowerExtension == L".lnk" || lowerExtension == L".url";
+}
+
+constexpr wchar_t kWindowClassName[] = L"ChatdaWindow";
+constexpr wchar_t kAppTitle[] = L"Chatda";
+constexpr wchar_t kIndexingTitle[] = L"Chatda - Indexing...";
 
 constexpr int kControlMargin = 12;
 constexpr int kDefaultSearchHeight = 34;
@@ -35,6 +101,8 @@ constexpr UINT kContextCommandOpenLocation = 2;
 constexpr UINT kShellCommandBase = 100;
 constexpr int kDonateButtonId = 201;
 constexpr int kHomepageButtonId = 202;
+constexpr wchar_t kDonateUrl[] = L"https://www.paypal.com/ncp/payment/T2KAST2XQC6BS";
+constexpr wchar_t kHomepageUrl[] = L"https://tech.trendarchive.io/";
 
 struct SearchPayload {
     uint64_t requestId = 0;
@@ -227,7 +295,6 @@ void MainWindow::CreateControls() {
     InitializeFonts();
     InitializeSystemImageList();
     InsertColumns();
-    ApplyEnglishInputMode();
     ResizeChildren();
     SetFocus(searchEdit_);
 }
@@ -408,7 +475,6 @@ void MainWindow::StartWorkers() {
     shutdown_.store(false, std::memory_order_relaxed);
     searchThread_ = std::thread([this]() { SearchLoop(); });
     indexThread_ = std::thread([this]() { IndexLoop(); });
-    updateThread_ = std::thread([this]() { UpdateLoop(); });
 }
 
 void MainWindow::StopWorkers() {
@@ -418,6 +484,11 @@ void MainWindow::StopWorkers() {
         searchRequested_ = true;
     }
     searchCondition_.notify_all();
+    {
+        // Taking the lock makes sure IndexLoop is either waiting or will see shutdown_.
+        std::lock_guard lock(indexMutex_);
+    }
+    indexCondition_.notify_all();
 
     if (indexThread_.joinable()) {
         indexThread_.join();
@@ -425,24 +496,13 @@ void MainWindow::StopWorkers() {
     if (searchThread_.joinable()) {
         searchThread_.join();
     }
-    if (updateThread_.joinable()) {
-        updateThread_.join();
-    }
-}
-
-void MainWindow::ApplyEnglishInputMode() const {
-    HKL englishLayout = LoadKeyboardLayoutW(L"00000409", KLF_NOTELLSHELL);
-    if (englishLayout != nullptr) {
-        ActivateKeyboardLayout(englishLayout, 0);
-        SendMessageW(searchEdit_, WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(englishLayout));
-    }
 }
 
 void MainWindow::OpenExternalUrl(const wchar_t* url) const {
     if (url == nullptr || *url == L'\0') {
         return;
     }
-    ShellExecuteW(hwnd_, L"open", url, nullptr, nullptr, SW_SHOWNORMAL);
+    ShellExecuteAsUser(hwnd_, url, nullptr);
 }
 
 std::wstring MainWindow::CurrentQuery() const {
@@ -478,10 +538,10 @@ void MainWindow::QueueSearch() {
 }
 
 void MainWindow::IndexLoop() {
-    bool hasCachedIndex = false;
+    bool hasIndex = false;
     auto cachedIndex = std::make_shared<SearchIndex>();
     if (cachedIndex->LoadCache()) {
-        hasCachedIndex = true;
+        hasIndex = true;
         if (shutdown_.load(std::memory_order_relaxed)) {
             return;
         }
@@ -493,28 +553,38 @@ void MainWindow::IndexLoop() {
 
         PostMessageW(hwnd_, kMessageIndexReady, 1, 0);
     }
+    cachedIndex.reset();
 
-    auto index = std::make_shared<SearchIndex>();
-    const bool buildSucceeded = index->Build();
+    // shortcut: full rebuild on a timer, so new files show up within kIndexRefreshInterval.
+    // Upgrade to reading USN journal changes (FSCTL_READ_USN_JOURNAL) if instant updates are needed.
+    for (bool firstBuild = true;; firstBuild = false) {
+        auto index = std::make_shared<SearchIndex>();
+        const bool buildSucceeded = index->Build(shutdown_);
 
-    if (shutdown_.load(std::memory_order_relaxed)) {
-        return;
-    }
-
-    if (buildSucceeded) {
-        index->SaveCache();
-
-        {
-            std::lock_guard lock(indexMutex_);
-            searchIndex_ = std::move(index);
+        if (shutdown_.load(std::memory_order_relaxed)) {
+            return;
         }
 
-        PostMessageW(hwnd_, kMessageIndexReady, 2, 0);
-        return;
-    }
+        if (buildSucceeded) {
+            if (firstBuild) {
+                index->SaveCache();  // once per run: the cache only speeds up the next start
+            }
 
-    if (!hasCachedIndex) {
-        PostMessageW(hwnd_, kMessageIndexReady, 0, 0);
+            {
+                std::lock_guard lock(indexMutex_);
+                searchIndex_ = std::move(index);
+            }
+
+            hasIndex = true;
+            PostMessageW(hwnd_, kMessageIndexReady, 2, 0);
+        } else if (!hasIndex) {
+            PostMessageW(hwnd_, kMessageIndexReady, 0, 0);
+        }
+
+        std::unique_lock lock(indexMutex_);
+        if (indexCondition_.wait_for(lock, kIndexRefreshInterval, [&]() { return shutdown_.load(std::memory_order_relaxed); })) {
+            return;
+        }
     }
 }
 
@@ -553,10 +623,6 @@ void MainWindow::SearchLoop() {
 
         PostMessageW(hwnd_, kMessageSearchComplete, 0, reinterpret_cast<LPARAM>(payload.release()));
     }
-}
-
-void MainWindow::UpdateLoop() {
-    CheckForUpdatesOnce(hwnd_, shutdown_);
 }
 
 void MainWindow::ApplyResults(std::vector<SearchResultRow> rows) {
@@ -647,8 +713,7 @@ void MainWindow::SelectOnlyRow(int row) const {
 }
 
 bool MainWindow::OpenResult(const SearchResultRow& row) const {
-    const HINSTANCE result = ShellExecuteW(hwnd_, L"open", row.path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    return reinterpret_cast<INT_PTR>(result) > 32;
+    return ShellExecuteAsUser(hwnd_, row.path.c_str(), nullptr);
 }
 
 bool MainWindow::OpenContainingFolder(const SearchResultRow& row) const {
@@ -660,8 +725,7 @@ bool MainWindow::OpenContainingFolder(const SearchResultRow& row) const {
     parameters += row.path;
     parameters += L"\"";
 
-    const HINSTANCE result = ShellExecuteW(hwnd_, L"open", L"explorer.exe", parameters.c_str(), nullptr, SW_SHOWNORMAL);
-    return reinterpret_cast<INT_PTR>(result) > 32;
+    return ShellExecuteAsUser(hwnd_, L"explorer.exe", parameters.c_str());
 }
 
 int MainWindow::ImageIndexForResult(const SearchResultRow& row) {
@@ -696,17 +760,8 @@ int MainWindow::QuerySystemImageIndex(const SearchResultRow& row) const {
                 SHGFI_SYSICONINDEX | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
         }
     } else {
-        std::filesystem::path filePath(row.path);
-        std::wstring extension = filePath.extension().wstring();
-        std::wstring loweredExtension = extension;
-        if (!loweredExtension.empty()) {
-            CharLowerBuffW(loweredExtension.data(), static_cast<DWORD>(loweredExtension.size()));
-        }
-
-        const bool preferActualPath =
-            loweredExtension == L".exe" || loweredExtension == L".ico" || loweredExtension == L".lnk" || loweredExtension == L".url";
-
-        if (preferActualPath) {
+        const std::wstring extension = LowerExtension(row.path);
+        if (HasOwnIcon(extension)) {
             result = SHGetFileInfoW(
                 row.path.c_str(),
                 FILE_ATTRIBUTE_NORMAL,
@@ -742,13 +797,8 @@ std::wstring MainWindow::IconCacheKeyForResult(const SearchResultRow& row) const
         return L"<folder>";
     }
 
-    std::filesystem::path filePath(row.path);
-    std::wstring extension = filePath.extension().wstring();
-    if (!extension.empty()) {
-        CharLowerBuffW(extension.data(), static_cast<DWORD>(extension.size()));
-    }
-
-    if (extension == L".exe" || extension == L".ico" || extension == L".lnk" || extension == L".url") {
+    const std::wstring extension = LowerExtension(row.path);
+    if (HasOwnIcon(extension)) {
         std::wstring loweredPath = row.path;
         CharLowerBuffW(loweredPath.data(), static_cast<DWORD>(loweredPath.size()));
         return L"path:" + loweredPath;
@@ -855,8 +905,6 @@ void MainWindow::ShowResultContextMenu(POINT screenPoint) {
 LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_CREATE:
-        SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 64, 64, LR_DEFAULTCOLOR)));
-        SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 20, 20, LR_DEFAULTCOLOR)));
         CreateControls();
         return 0;
 
@@ -940,4 +988,4 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
     return DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
-}  // namespace ufe
+}  // namespace chatda

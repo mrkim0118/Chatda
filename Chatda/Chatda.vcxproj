@@ -14,8 +14,8 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{3B69232E-3A4A-4B91-A960-D7A1603DF19A}</ProjectGuid>
-    <RootNamespace>UltraFastFileExplorer</RootNamespace>
-    <ProjectName>UltraFastFileExplorer</ProjectName>
+    <RootNamespace>Chatda</RootNamespace>
+    <ProjectName>Chatda</ProjectName>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -45,7 +45,7 @@
   <PropertyGroup>
     <OutDir>$(MSBuildThisFileDirectory)build\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)obj\$(Configuration)\</IntDir>
-    <TargetName>UltraFastFileExplorer</TargetName>
+    <TargetName>Chatda</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -59,18 +59,14 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>User32.lib;Gdi32.lib;Shell32.lib;Ole32.lib;Comctl32.lib;Winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>User32.lib;Gdi32.lib;Shell32.lib;Ole32.lib;Comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ResourceCompile>
       <PreprocessorDefinitions>UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Culture>0x0409</Culture>
     </ResourceCompile>
-    <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)latest-version.txt" "$(OutDir)" &gt;NUL
-if exist "$(ProjectDir)update-url.txt" copy /Y "$(ProjectDir)update-url.txt" "$(OutDir)" &gt;NUL
-if exist "$(ProjectDir)installer-url.txt" copy /Y "$(ProjectDir)installer-url.txt" "$(OutDir)" &gt;NUL</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -92,40 +88,33 @@ if exist "$(ProjectDir)installer-url.txt" copy /Y "$(ProjectDir)installer-url.tx
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
-      <AdditionalDependencies>User32.lib;Gdi32.lib;Shell32.lib;Ole32.lib;Comctl32.lib;Winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>User32.lib;Gdi32.lib;Shell32.lib;Ole32.lib;Comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ResourceCompile>
       <PreprocessorDefinitions>UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Culture>0x0409</Culture>
     </ResourceCompile>
-    <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)latest-version.txt" "$(OutDir)" &gt;NUL
-if exist "$(ProjectDir)update-url.txt" copy /Y "$(ProjectDir)update-url.txt" "$(OutDir)" &gt;NUL
-if exist "$(ProjectDir)installer-url.txt" copy /Y "$(ProjectDir)installer-url.txt" "$(OutDir)" &gt;NUL</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="MainWindow.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="SearchIndex.cpp" />
-    <ClCompile Include="UpdateCheck.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MainWindow.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="SearchIndex.h" />
-    <ClInclude Include="UpdateCheck.h" />
+    <ClInclude Include="StringUtil.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="app.rc" />
     <None Include="latest-version.txt" />
     <None Include="app.ico" />
-    <None Include="installer-url.txt" />
-    <None Include="update-url.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

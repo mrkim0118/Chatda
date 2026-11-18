@@ -14,7 +14,7 @@
 
 #include "SearchIndex.h"
 
-namespace ufe {
+namespace chatda {
 
 class MainWindow {
 public:
@@ -35,13 +35,11 @@ private:
     void ReleaseResources();
     void StartWorkers();
     void StopWorkers();
-    void ApplyEnglishInputMode() const;
     void OpenExternalUrl(const wchar_t* url) const;
     std::wstring CurrentQuery() const;
     void QueueSearch();
     void IndexLoop();
     void SearchLoop();
-    void UpdateLoop();
     void ApplyResults(std::vector<SearchResultRow> rows);
     void PopulateVirtualItem(LPARAM payload);
     int SelectedRow() const;
@@ -69,6 +67,7 @@ private:
     std::unordered_map<std::wstring, int> iconIndexCache_;
 
     std::mutex indexMutex_;
+    std::condition_variable indexCondition_;
     std::shared_ptr<SearchIndex> searchIndex_;
 
     std::mutex searchMutex_;
@@ -81,11 +80,10 @@ private:
 
     std::thread indexThread_;
     std::thread searchThread_;
-    std::thread updateThread_;
 
     std::atomic_bool shutdown_ = false;
     std::atomic_uint64_t nextSearchRequestId_ = 0;
     std::atomic_uint64_t latestRequestedSearchId_ = 0;
 };
 
-}  // namespace ufe
+}  // namespace chatda
