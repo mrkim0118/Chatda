@@ -93,7 +93,6 @@ function Invoke-NativeReleaseBuild {
 @echo off
 call "$VcVarsPath" >nul
 if errorlevel 1 exit /b 1
-cd /d "$ProjectDir"
 if not exist "obj\Release" mkdir "obj\Release"
 if not exist "build\Release" mkdir "build\Release"
 rc /nologo /fo "obj\Release\app.res" "app.rc"
@@ -106,7 +105,9 @@ exit /b 0
     $batchPath = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".cmd")
     try {
         Set-Content -LiteralPath $batchPath -Value $command -Encoding ASCII
-        & cmd.exe /d /c $batchPath
+        # The batch is ASCII, so a non-ASCII project path cannot appear in it; run from that folder instead.
+        Push-Location -LiteralPath $ProjectDir
+        try { & cmd.exe /d /c $batchPath } finally { Pop-Location }
         if ($LASTEXITCODE -ne 0) {
             throw "Native release build failed."
         }

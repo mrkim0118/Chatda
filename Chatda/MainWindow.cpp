@@ -90,8 +90,6 @@ constexpr wchar_t kIndexingTitle[] = L"Chatda - Indexing...";
 
 constexpr int kControlMargin = 12;
 constexpr int kDefaultSearchHeight = 34;
-constexpr int kHeaderButtonWidth = 108;
-constexpr int kHeaderButtonGap = 8;
 constexpr UINT_PTR kSearchDebounceTimerId = 1001;
 constexpr UINT kSearchDebounceMs = 55;
 constexpr UINT kMessageIndexReady = WM_APP + 1;
@@ -99,10 +97,6 @@ constexpr UINT kMessageSearchComplete = WM_APP + 2;
 constexpr UINT kContextCommandOpen = 1;
 constexpr UINT kContextCommandOpenLocation = 2;
 constexpr UINT kShellCommandBase = 100;
-constexpr int kDonateButtonId = 201;
-constexpr int kHomepageButtonId = 202;
-constexpr wchar_t kDonateUrl[] = L"https://www.paypal.com/ncp/payment/T2KAST2XQC6BS";
-constexpr wchar_t kHomepageUrl[] = L"https://tech.trendarchive.io/";
 
 struct SearchPayload {
     uint64_t requestId = 0;
@@ -248,34 +242,6 @@ void MainWindow::CreateControls() {
     SetWindowSubclass(searchEdit_, SearchEditSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
     SendMessageW(searchEdit_, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"Search file or folder name"));
 
-    donateButton_ = CreateWindowExW(
-        0,
-        WC_BUTTONW,
-        L"Donate",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        0,
-        0,
-        0,
-        0,
-        hwnd_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDonateButtonId)),
-        instance_,
-        nullptr);
-
-    homepageButton_ = CreateWindowExW(
-        0,
-        WC_BUTTONW,
-        L"Homepage",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        0,
-        0,
-        0,
-        0,
-        hwnd_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kHomepageButtonId)),
-        instance_,
-        nullptr);
-
     listView_ = CreateWindowExW(
         WS_EX_CLIENTEDGE,
         WC_LISTVIEWW,
@@ -319,7 +285,7 @@ void MainWindow::InsertColumns() {
 }
 
 void MainWindow::ResizeChildren() {
-    if (hwnd_ == nullptr || searchEdit_ == nullptr || listView_ == nullptr || donateButton_ == nullptr || homepageButton_ == nullptr) {
+    if (hwnd_ == nullptr || searchEdit_ == nullptr || listView_ == nullptr) {
         return;
     }
 
@@ -329,24 +295,9 @@ void MainWindow::ResizeChildren() {
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
     const int topRowY = kControlMargin;
-    const int buttonsWidth = (kHeaderButtonWidth * 2) + kHeaderButtonGap;
-    const int searchWidth = std::max(240, width - (kControlMargin * 2) - buttonsWidth - kHeaderButtonGap);
+    const int searchWidth = width - (kControlMargin * 2);
 
     MoveWindow(searchEdit_, kControlMargin, topRowY, searchWidth, searchControlHeight_, TRUE);
-    MoveWindow(
-        donateButton_,
-        width - kControlMargin - buttonsWidth,
-        topRowY,
-        kHeaderButtonWidth,
-        searchControlHeight_,
-        TRUE);
-    MoveWindow(
-        homepageButton_,
-        width - kControlMargin - kHeaderButtonWidth,
-        topRowY,
-        kHeaderButtonWidth,
-        searchControlHeight_,
-        TRUE);
     MoveWindow(
         listView_,
         kControlMargin,
@@ -391,8 +342,6 @@ void MainWindow::InitializeFonts() {
 
     if (listFont_ != nullptr) {
         SendMessageW(listView_, WM_SETFONT, reinterpret_cast<WPARAM>(listFont_), TRUE);
-        SendMessageW(donateButton_, WM_SETFONT, reinterpret_cast<WPARAM>(listFont_), TRUE);
-        SendMessageW(homepageButton_, WM_SETFONT, reinterpret_cast<WPARAM>(listFont_), TRUE);
     }
     if (searchFont_ != nullptr) {
         SendMessageW(searchEdit_, WM_SETFONT, reinterpret_cast<WPARAM>(searchFont_), TRUE);
@@ -496,13 +445,6 @@ void MainWindow::StopWorkers() {
     if (searchThread_.joinable()) {
         searchThread_.join();
     }
-}
-
-void MainWindow::OpenExternalUrl(const wchar_t* url) const {
-    if (url == nullptr || *url == L'\0') {
-        return;
-    }
-    ShellExecuteAsUser(hwnd_, url, nullptr);
 }
 
 std::wstring MainWindow::CurrentQuery() const {
@@ -926,14 +868,6 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
     case WM_COMMAND:
         if (LOWORD(wParam) == 101 && HIWORD(wParam) == EN_CHANGE) {
             SetTimer(hwnd_, kSearchDebounceTimerId, kSearchDebounceMs, nullptr);
-            return 0;
-        }
-        if (LOWORD(wParam) == kDonateButtonId && HIWORD(wParam) == BN_CLICKED) {
-            OpenExternalUrl(kDonateUrl);
-            return 0;
-        }
-        if (LOWORD(wParam) == kHomepageButtonId && HIWORD(wParam) == BN_CLICKED) {
-            OpenExternalUrl(kHomepageUrl);
             return 0;
         }
         return 0;

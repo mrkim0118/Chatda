@@ -35,7 +35,6 @@ private:
     void ReleaseResources();
     void StartWorkers();
     void StopWorkers();
-    void OpenExternalUrl(const wchar_t* url) const;
     std::wstring CurrentQuery() const;
     void QueueSearch();
     void IndexLoop();
@@ -56,8 +55,6 @@ private:
     HINSTANCE instance_ = nullptr;
     HWND hwnd_ = nullptr;
     HWND searchEdit_ = nullptr;
-    HWND donateButton_ = nullptr;
-    HWND homepageButton_ = nullptr;
     HWND listView_ = nullptr;
     HFONT listFont_ = nullptr;
     HFONT searchFont_ = nullptr;
