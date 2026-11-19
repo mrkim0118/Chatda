@@ -66,14 +66,14 @@ The output is `Chatda\build\Release\Chatda.exe`.
 ### Release
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Velopack.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\Build-Installer.ps1
 ```
 
-The script builds the app and creates a Velopack installer (`Chatda-Setup-<version>.exe`) in `artifacts\velopack\Releases`. It requires the `vpk` CLI (`dotnet tool install -g vpk`).
+The script builds the app with the VC++ runtime linked statically and creates an installer (`Chatda-Setup-<version>.exe`) in `artifacts\installer`. The installer lets the user choose the install folder (default `C:\Program Files\Chatda`). It requires [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
 
 ### Versioning
 
-[`Chatda/latest-version.txt`](Chatda/latest-version.txt) is the single source of the version number used by the publish script.
+[`Chatda/version.txt`](Chatda/version.txt) is the single source of the version number used by the installer script.
 
 ## Project Layout
 
@@ -83,9 +83,10 @@ The script builds the app and creates a Velopack installer (`Chatda-Setup-<versi
 | `Chatda/MainWindow.cpp` | Main window, search box, result list, context menu, worker threads |
 | `Chatda/SearchIndex.cpp` | Index build (USN journal / recursive scan), cache, search and ranking |
 | `Chatda/app.ico` | App icon |
-| `scripts/Publish-Velopack.ps1` | Release packaging |
+| `installer/Chatda.iss` | Inno Setup installer script |
+| `scripts/Build-Installer.ps1` | Release build and installer packaging |
 | `docs/` | README icon |
 
 ## Libraries
 
-- [Velopack](https://velopack.io/): installer
+- [Inno Setup](https://jrsoftware.org/isinfo.php): installer

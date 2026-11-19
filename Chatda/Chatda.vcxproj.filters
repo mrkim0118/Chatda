@@ -38,6 +38,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.ico" />
-    <None Include="latest-version.txt" />
+    <None Include="version.txt" />
   </ItemGroup>
 </Project>

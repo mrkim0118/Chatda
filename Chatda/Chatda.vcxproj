@@ -113,7 +113,7 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="app.rc" />
-    <None Include="latest-version.txt" />
+    <None Include="version.txt" />
     <None Include="app.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

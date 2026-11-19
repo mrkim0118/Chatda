@@ -66,14 +66,14 @@ msbuild Chatda.sln /p:Configuration=Release /p:Platform=x64
 ### 배포
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Velopack.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\Build-Installer.ps1
 ```
 
-이 스크립트는 앱을 빌드하고 `artifacts\velopack\Releases`에 Velopack 설치 파일(`Chatda-Setup-<버전>.exe`)을 만듭니다. `vpk` CLI가 필요합니다(`dotnet tool install -g vpk`).
+이 스크립트는 VC++ 런타임을 exe에 포함해 앱을 빌드하고, `artifacts\installer`에 설치 파일(`Chatda-Setup-<버전>.exe`)을 만듭니다. 설치할 때 설치 폴더를 직접 고를 수 있습니다(기본값 `C:\Program Files\Chatda`). [Inno Setup 6](https://jrsoftware.org/isinfo.php)이 필요합니다(`winget install JRSoftware.InnoSetup`).
 
 ### 버전 관리
 
-버전 번호는 [`Chatda/latest-version.txt`](Chatda/latest-version.txt) 한 곳에서만 관리하며, 배포 스크립트가 이 값을 사용합니다.
+버전 번호는 [`Chatda/version.txt`](Chatda/version.txt) 한 곳에서만 관리하며, 배포 스크립트가 이 값을 사용합니다.
 
 ## 프로젝트 구조
 
@@ -83,9 +83,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Velopack.ps1
 | `Chatda/MainWindow.cpp` | 메인 창, 검색창, 결과 목록, 오른쪽 클릭 메뉴, 작업 스레드 |
 | `Chatda/SearchIndex.cpp` | 색인 생성(USN 저널 / 폴더 탐색), 캐시, 검색과 정렬 |
 | `Chatda/app.ico` | 앱 아이콘 |
-| `scripts/Publish-Velopack.ps1` | 배포 패키지 생성 |
+| `installer/Chatda.iss` | Inno Setup 설치 스크립트 |
+| `scripts/Build-Installer.ps1` | Release 빌드와 설치 파일 생성 |
 | `docs/` | README용 아이콘 |
 
 ## 사용한 라이브러리
 
-- [Velopack](https://velopack.io/): 설치 프로그램
+- [Inno Setup](https://jrsoftware.org/isinfo.php): 설치 프로그램
