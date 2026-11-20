@@ -12,6 +12,10 @@
 
 Chatda는 로컬 드라이브의 모든 파일·폴더 이름을 색인해 두고, 입력하는 즉시 결과를 보여줍니다. NTFS 드라이브에서는 USN 저널을 직접 읽어서 모든 폴더를 훑는 것보다 훨씬 빠르게 색인을 만듭니다.
 
+## 다운로드
+
+[Releases](https://github.com/mrkim0118/Chatda/releases/latest) 페이지에서 `Chatda-Setup-<버전>.exe`를 받아 실행하세요. 설치 폴더를 고를 수 있습니다(기본값 `C:\Program Files\Chatda`).
+
 ## 주요 기능
 
 - **입력 즉시 검색**: Enter 없이 입력하는 동안 결과가 바로 바뀝니다.

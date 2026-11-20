@@ -12,6 +12,10 @@
 
 Chatda indexes every file and folder name on your local drives, then shows matches as you type. On NTFS drives it reads the USN journal directly, so building the index is much faster than scanning every folder.
 
+## Download
+
+Get `Chatda-Setup-<version>.exe` from the [Releases](https://github.com/mrkim0118/Chatda/releases/latest) page and run it. You can choose the install folder (default `C:\Program Files\Chatda`).
+
 ## Features
 
 - **Search as you type**: Results update while you type, with no Enter needed.
