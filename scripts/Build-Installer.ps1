@@ -61,7 +61,8 @@ function Get-IsccPath {
 function Invoke-NativeReleaseBuild {
     param(
         [Parameter(Mandatory = $true)][string]$VcVarsPath,
-        [Parameter(Mandatory = $true)][string]$ProjectDir
+        [Parameter(Mandatory = $true)][string]$ProjectDir,
+        [Parameter(Mandatory = $true)][string]$Version
     )
 
     # /MT links the VC++ runtime statically, so the installer needs no vcredist.
@@ -73,7 +74,7 @@ if not exist "obj\Release" mkdir "obj\Release"
 if not exist "build\Release" mkdir "build\Release"
 rc /nologo /fo "obj\Release\app.res" "app.rc"
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++20 /EHsc /O2 /MT /DUNICODE /D_UNICODE /DWIN32 /D_WINDOWS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /Fo"obj\Release\\" "MainWindow.cpp" "main.cpp" "SearchIndex.cpp" /link /DEBUG:NONE /OUT:"build\Release\Chatda.exe" /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" User32.lib Gdi32.lib Shell32.lib Ole32.lib Comctl32.lib "obj\Release\app.res"
+cl /nologo /std:c++20 /EHsc /O2 /MT /DUNICODE /D_UNICODE /DWIN32 /D_WINDOWS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DCHATDA_VERSION=\"$Version\" /Fo"obj\Release\\" "MainWindow.cpp" "main.cpp" "SearchIndex.cpp" "UpdateCheck.cpp" /link /DEBUG:NONE /OUT:"build\Release\Chatda.exe" /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" User32.lib Gdi32.lib Shell32.lib Ole32.lib Comctl32.lib "obj\Release\app.res"
 if errorlevel 1 exit /b 1
 exit /b 0
 "@
@@ -105,7 +106,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 $isccPath = Get-IsccPath
 
 Write-Host "1/2 Native release build"
-Invoke-NativeReleaseBuild -VcVarsPath (Get-VcVarsPath) -ProjectDir $projectDir
+Invoke-NativeReleaseBuild -VcVarsPath (Get-VcVarsPath) -ProjectDir $projectDir -Version $Version
 $exePath = Join-Path $projectDir "build\Release\Chatda.exe"
 if (-not (Test-Path -LiteralPath $exePath)) {
     throw "Build output was not found: $exePath"
