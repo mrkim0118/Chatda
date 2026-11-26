@@ -17,6 +17,7 @@
 #include <memory>
 #include <utility>
 
+#include "UpdateCheck.h"
 #include "resource.h"
 
 namespace chatda {
@@ -94,6 +95,15 @@ constexpr UINT_PTR kSearchDebounceTimerId = 1001;
 constexpr UINT kSearchDebounceMs = 55;
 constexpr UINT kMessageIndexReady = WM_APP + 1;
 constexpr UINT kMessageSearchComplete = WM_APP + 2;
+constexpr UINT kMessageUpdateAvailable = WM_APP + 3;
+constexpr UINT kMessageUpdateFailed = WM_APP + 4;
+
+void PostString(HWND hwnd, UINT message, std::wstring value) {
+    auto* payload = new std::wstring(std::move(value));
+    if (!PostMessageW(hwnd, message, 0, reinterpret_cast<LPARAM>(payload))) {
+        delete payload;
+    }
+}
 constexpr UINT kContextCommandOpen = 1;
 constexpr UINT kContextCommandOpenLocation = 2;
 constexpr UINT kShellCommandBase = 100;
@@ -132,6 +142,7 @@ int MainWindow::Run(HINSTANCE instance, int commandShow) {
     ShowWindow(hwnd_, commandShow);
     UpdateWindow(hwnd_);
     StartWorkers();
+    StartUpdateThread();
 
     MSG message = {};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
@@ -426,6 +437,16 @@ void MainWindow::StartWorkers() {
     indexThread_ = std::thread([this]() { IndexLoop(); });
 }
 
+// Asks once per launch when GitHub has a newer release; the answer arrives as kMessageUpdateAvailable.
+void MainWindow::StartUpdateThread() {
+    updateThread_ = std::thread([hwnd = hwnd_]() {
+        std::wstring version = FindNewerVersion();
+        if (!version.empty()) {
+            PostString(hwnd, kMessageUpdateAvailable, std::move(version));
+        }
+    });
+}
+
 void MainWindow::StopWorkers() {
     shutdown_.store(true, std::memory_order_relaxed);
     {
@@ -441,6 +462,9 @@ void MainWindow::StopWorkers() {
 
     if (indexThread_.joinable()) {
         indexThread_.join();
+    }
+    if (updateThread_.joinable()) {
+        updateThread_.join();
     }
     if (searchThread_.joinable()) {
         searchThread_.join();
@@ -905,6 +929,30 @@ LRESULT MainWindow::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         if (payload != nullptr && payload->requestId == latestRequestedSearchId_.load(std::memory_order_relaxed)) {
             ApplyResults(std::move(payload->rows));
         }
+        return 0;
+    }
+
+    case kMessageUpdateAvailable: {
+        const std::unique_ptr<std::wstring> version(reinterpret_cast<std::wstring*>(lParam));
+        if (ConfirmUpdate(hwnd_, *version)) {
+            if (updateThread_.joinable()) {
+                updateThread_.join();
+            }
+            updateThread_ = std::thread([hwnd = hwnd_, target = *version]() {
+                std::wstring error = DownloadAndStartInstaller(target);
+                if (!error.empty()) {
+                    PostString(hwnd, kMessageUpdateFailed, std::move(error));
+                } else {
+                    PostMessageW(hwnd, WM_CLOSE, 0, 0);  // the installer replaces Chatda.exe
+                }
+            });
+        }
+        return 0;
+    }
+
+    case kMessageUpdateFailed: {
+        const std::unique_ptr<std::wstring> error(reinterpret_cast<std::wstring*>(lParam));
+        ShowUpdateError(hwnd_, *error);
         return 0;
     }
 

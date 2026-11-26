@@ -27,6 +27,7 @@ Chatda는 로컬 드라이브의 모든 파일·폴더 이름을 색인해 두�
 - **백그라운드 갱신**: 10분마다 색인을 다시 만들어 새 파일을 반영합니다.
 - **결과에서 바로 열기**: 결과를 오른쪽 클릭해 열거나 탐색기에서 위치를 엽니다.
 - **시스템 아이콘**: 결과마다 Windows 파일 형식 아이콘을 보여줍니다.
+- **업데이트 확인**: 실행할 때 GitHub 최신 릴리스를 확인하고, 새 버전이 있으면 내려받아 설치할지 묻습니다.
 
 ## 요구 사항
 
@@ -90,6 +91,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Build-Installer.ps1
 | `installer/Chatda.iss` | Inno Setup 설치 스크립트 |
 | `scripts/Build-Installer.ps1` | Release 빌드와 설치 파일 생성 |
 | `docs/` | README용 아이콘 |
+| `Chatda/UpdateCheck.cpp` | GitHub 릴리스 업데이트 확인 |
 
 ## 사용한 라이브러리
 

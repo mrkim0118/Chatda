@@ -35,6 +35,7 @@ private:
     void ReleaseResources();
     void StartWorkers();
     void StopWorkers();
+    void StartUpdateThread();
     std::wstring CurrentQuery() const;
     void QueueSearch();
     void IndexLoop();
@@ -77,6 +78,7 @@ private:
 
     std::thread indexThread_;
     std::thread searchThread_;
+    std::thread updateThread_;
 
     std::atomic_bool shutdown_ = false;
     std::atomic_uint64_t nextSearchRequestId_ = 0;

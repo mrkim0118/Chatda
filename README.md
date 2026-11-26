@@ -27,6 +27,7 @@ Get `Chatda-Setup-<version>.exe` from the [Releases](https://github.com/mrkim011
 - **Background refresh**: The index is rebuilt every 10 minutes, so new files show up.
 - **Open from results**: Right-click a result to open it or open its location in Explorer.
 - **System icons**: Each result shows its Windows file type icon.
+- **Update check**: On launch, checks the latest GitHub release and asks whether to download and install the new version.
 
 ## Requirements
 
@@ -90,6 +91,7 @@ The script builds the app with the VC++ runtime linked statically and creates an
 | `installer/Chatda.iss` | Inno Setup installer script |
 | `scripts/Build-Installer.ps1` | Release build and installer packaging |
 | `docs/` | README icon |
+| `Chatda/UpdateCheck.cpp` | GitHub release update check |
 
 ## Libraries
 
