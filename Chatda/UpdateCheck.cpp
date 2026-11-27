@@ -12,6 +12,9 @@
 #include <string_view>
 #include <vector>
 
+#include "StringUtil.h"
+#include "Strings.h"
+
 namespace chatda {
 namespace {
 
@@ -19,19 +22,7 @@ namespace {
 #error CHATDA_VERSION must be defined by the project (read from version.txt).
 #endif
 constexpr wchar_t kCurrentVersion[] = L"" CHATDA_VERSION;
-constexpr wchar_t kUpdateTitle[] = L"Update Available";
-constexpr wchar_t kUpdateErrorTitle[] = L"Update Failed";
 constexpr wchar_t kLatestReleaseUrl[] = L"https://api.github.com/repos/mrkim0118/Chatda/releases/latest";
-
-std::wstring JoinPath(const std::wstring& left, const std::wstring& right) {
-    if (left.empty()) {
-        return right;
-    }
-    if (left.back() == L'\\') {
-        return left + right;
-    }
-    return left + L'\\' + right;
-}
 
 std::wstring Utf8ToWide(const std::string& value) {
     if (value.empty()) {
@@ -58,23 +49,6 @@ std::wstring Utf8ToWide(const std::string& value) {
         converted.erase(converted.begin());
     }
     return converted;
-}
-
-std::wstring FormatUpdateMessage(const std::wstring& currentVersion, const std::wstring& newestVersion) {
-    std::wstring message = L"New version: ";
-    message += newestVersion;
-    message += L"\nCurrent version: ";
-    message += currentVersion;
-    message += L"\n\nInstall now?";
-    return message;
-}
-
-std::wstring FormatDownloadFailedMessage() {
-    return L"Could not download the installer.";
-}
-
-std::wstring FormatInstallStartFailedMessage() {
-    return L"The installer could not be started.";
 }
 
 int CompareVersionStrings(const std::wstring& left, const std::wstring& right) {
@@ -111,7 +85,7 @@ int CompareVersionStrings(const std::wstring& left, const std::wstring& right) {
     return 0;
 }
 
-bool DownloadBytes(const std::wstring& url, std::vector<unsigned char>& output, int receiveTimeoutMs) {
+bool DownloadBytes(const std::wstring& url, std::vector<unsigned char>& output, int receiveTimeoutMs, const std::atomic_bool& cancel) {
     URL_COMPONENTS components = {};
     components.dwStructSize = sizeof(components);
 
@@ -172,6 +146,9 @@ bool DownloadBytes(const std::wstring& url, std::vector<unsigned char>& output, 
             statusCode == 200) {
             DWORD available = 0;
             do {
+                if (cancel.load(std::memory_order_relaxed)) {
+                    break;
+                }
                 available = 0;
                 if (!WinHttpQueryDataAvailable(request, &available)) {
                     break;
@@ -198,9 +175,9 @@ bool DownloadBytes(const std::wstring& url, std::vector<unsigned char>& output, 
     return success && !output.empty();
 }
 
-bool DownloadText(const std::wstring& url, std::wstring& output) {
+bool DownloadText(const std::wstring& url, std::wstring& output, const std::atomic_bool& cancel) {
     std::vector<unsigned char> bytes;
-    if (!DownloadBytes(url, bytes, 2500)) {
+    if (!DownloadBytes(url, bytes, 2500, cancel)) {
         return false;
     }
 
@@ -208,9 +185,9 @@ bool DownloadText(const std::wstring& url, std::wstring& output) {
     return !output.empty();
 }
 
-bool DownloadFile(const std::wstring& url, const std::wstring& path) {
+bool DownloadFile(const std::wstring& url, const std::wstring& path, const std::atomic_bool& cancel) {
     std::vector<unsigned char> bytes;
-    if (!DownloadBytes(url, bytes, 30000)) {
+    if (!DownloadBytes(url, bytes, 30000, cancel)) {
         return false;
     }
 
@@ -254,10 +231,10 @@ struct LatestRelease {
 };
 
 // shortcut: scans the GitHub JSON for two keys instead of parsing it; enough while each release has one Setup .exe.
-bool FetchLatestRelease(LatestRelease& release) {
+bool FetchLatestRelease(LatestRelease& release, const std::atomic_bool& cancel) {
     std::wstring json;
     std::wstring tag;
-    if (!DownloadText(kLatestReleaseUrl, json) || FindJsonString(json, L"tag_name", 0, tag) == std::wstring::npos) {
+    if (!DownloadText(kLatestReleaseUrl, json, cancel) || FindJsonString(json, L"tag_name", 0, tag) == std::wstring::npos) {
         return false;
     }
     release.version = !tag.empty() && (tag.front() == L'v' || tag.front() == L'V') ? tag.substr(1) : tag;
@@ -309,33 +286,37 @@ bool StartInstaller(HWND owner, const std::wstring& installerPath) {
 
 }  // namespace
 
-std::wstring FindNewerVersion() {
+std::wstring FindNewerVersion(const std::atomic_bool& cancel) {
     LatestRelease release;
-    if (!FetchLatestRelease(release) || CompareVersionStrings(kCurrentVersion, release.version) >= 0) {
+    if (!FetchLatestRelease(release, cancel) || cancel.load(std::memory_order_relaxed) || CompareVersionStrings(kCurrentVersion, release.version) >= 0) {
         return {};
     }
     return release.version;
 }
 
 bool ConfirmUpdate(HWND owner, const std::wstring& version) {
-    const std::wstring message = FormatUpdateMessage(kCurrentVersion, version);
-    return MessageBoxW(owner, message.c_str(), kUpdateTitle, MB_YESNO | MB_ICONINFORMATION) == IDYES;
+    const std::wstring message = FormatText(Text().updateMessage, version.c_str(), kCurrentVersion);
+    return MessageBoxW(owner, message.c_str(), Text().updateTitle, MB_YESNO | MB_ICONINFORMATION) == IDYES;
 }
 
-std::wstring DownloadAndStartInstaller(const std::wstring& version) {
+std::wstring DownloadAndStartInstaller(const std::wstring& version, const std::atomic_bool& cancel) {
     LatestRelease release;
     const std::wstring installerPath = BuildTempInstallerPath(version);
-    if (!FetchLatestRelease(release) || installerPath.empty() || !DownloadFile(release.setupUrl, installerPath)) {
-        return FormatDownloadFailedMessage();
+    const bool downloaded = FetchLatestRelease(release, cancel) && !installerPath.empty() && DownloadFile(release.setupUrl, installerPath, cancel);
+    if (cancel.load(std::memory_order_relaxed)) {
+        return {};  // Chatda is closing: do not start an installer behind the user's back
+    }
+    if (!downloaded) {
+        return Text().updateDownloadFailed;
     }
     if (!StartInstaller(nullptr, installerPath)) {
-        return FormatInstallStartFailedMessage();
+        return Text().updateStartFailed;
     }
     return {};
 }
 
 void ShowUpdateError(HWND owner, const std::wstring& error) {
-    MessageBoxW(owner, error.c_str(), kUpdateErrorTitle, MB_OK | MB_ICONERROR);
+    MessageBoxW(owner, error.c_str(), Text().updateErrorTitle, MB_OK | MB_ICONERROR);
 }
 
 }  // namespace chatda

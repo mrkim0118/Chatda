@@ -16,6 +16,12 @@
     <ClCompile Include="SearchIndex.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Strings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="UpdateCheck.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MainWindow.h">
@@ -28,6 +34,12 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="StringUtil.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Strings.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="UpdateCheck.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

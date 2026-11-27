@@ -74,7 +74,7 @@ if not exist "obj\Release" mkdir "obj\Release"
 if not exist "build\Release" mkdir "build\Release"
 rc /nologo /fo "obj\Release\app.res" "app.rc"
 if errorlevel 1 exit /b 1
-cl /nologo /std:c++20 /EHsc /O2 /MT /DUNICODE /D_UNICODE /DWIN32 /D_WINDOWS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DCHATDA_VERSION=\"$Version\" /Fo"obj\Release\\" "MainWindow.cpp" "main.cpp" "SearchIndex.cpp" "UpdateCheck.cpp" /link /DEBUG:NONE /OUT:"build\Release\Chatda.exe" /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" User32.lib Gdi32.lib Shell32.lib Ole32.lib Comctl32.lib "obj\Release\app.res"
+cl /nologo /std:c++20 /utf-8 /EHsc /O2 /MT /DUNICODE /D_UNICODE /DWIN32 /D_WINDOWS /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DCHATDA_VERSION=\"$Version\" /Fo"obj\Release\\" "MainWindow.cpp" "main.cpp" "SearchIndex.cpp" "Strings.cpp" "UpdateCheck.cpp" /link /DEBUG:NONE /OUT:"build\Release\Chatda.exe" /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" User32.lib Gdi32.lib Shell32.lib Ole32.lib Comctl32.lib "obj\Release\app.res"
 if errorlevel 1 exit /b 1
 exit /b 0
 "@

@@ -51,6 +51,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>UNICODE;_UNICODE;WIN32;_WINDOWS;NOMINMAX;WIN32_LEAN_AND_MEAN;_WIN32_WINNT=0x0A00;CHATDA_VERSION="$(ChatdaVersion)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -72,6 +73,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level4</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -107,12 +109,14 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="SearchIndex.cpp" />
     <ClCompile Include="UpdateCheck.cpp" />
+    <ClCompile Include="Strings.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MainWindow.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="SearchIndex.h" />
     <ClInclude Include="StringUtil.h" />
+    <ClInclude Include="Strings.h" />
     <ClInclude Include="UpdateCheck.h" />
   </ItemGroup>
   <ItemGroup>
